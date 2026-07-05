@@ -1,0 +1,6 @@
+.env
+venv/
+grievance-backend/
+__pycache__/
+*.pyc
+ngrok.exe
