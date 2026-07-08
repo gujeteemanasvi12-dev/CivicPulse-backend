@@ -7,7 +7,7 @@ import uuid
 
 load_dotenv()
 
-NEO4J_URL = "https://998690ac.databases.neo4j.io/db/998690ac/query/v2"
+NEO4J_URL = "https://10b3e9c8.databases.neo4j.io/db/10b3e9c8/query/v2"
 NEO4J_USERNAME = os.getenv("NEO4J_USERNAME")
 NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD")
 
