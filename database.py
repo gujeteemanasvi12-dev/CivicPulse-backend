@@ -1,7 +1,6 @@
 # database.py
 import os
 import requests
-import json
 from dotenv import load_dotenv
 from datetime import datetime
 import uuid
@@ -20,6 +19,32 @@ def run_query(cypher: str, params: dict = {}):
         json={"statement": cypher, "parameters": params}
     )
     return response.json()
+
+def extract_nodes(result):
+    try:
+        # Format 1: {"data": {"values": [[node], [node]]}}
+        values = result.get("data", {}).get("values", [])
+        if values:
+            nodes = []
+            for row in values:
+                item = row[0]
+                if isinstance(item, dict) and "properties" in item:
+                    nodes.append(item["properties"])
+                elif isinstance(item, dict):
+                    nodes.append(item)
+            return nodes
+        # Format 2: {"results": [{"data": [{"row": [node]}]}]}
+        results = result.get("results", [])
+        if results:
+            nodes = []
+            for row in results[0].get("data", []):
+                item = row.get("row", [{}])[0]
+                if isinstance(item, dict):
+                    nodes.append(item)
+            return nodes
+    except:
+        pass
+    return []
 
 def save_complaint(data: dict) -> str:
     complaint_id = str(uuid.uuid4())[:8].upper()
@@ -54,19 +79,14 @@ def get_complaint(complaint_id: str):
         "MATCH (c:Complaint {id: $id}) RETURN c",
         {"id": complaint_id}
     )
-    try:
-        return result["data"]["values"][0][0]
-    except:
-        return None
+    nodes = extract_nodes(result)
+    return nodes[0] if nodes else None
 
 def get_all_complaints() -> list:
     result = run_query(
         "MATCH (c:Complaint) RETURN c ORDER BY c.priority_score DESC"
     )
-    try:
-        return [row[0] for row in result["data"]["values"]]
-    except:
-        return []
+    return extract_nodes(result)
 
 def get_pending_complaints() -> list:
     result = run_query("""
@@ -74,10 +94,7 @@ def get_pending_complaints() -> list:
         WHERE c.status <> 'Resolved' AND c.escalated = false
         RETURN c
     """)
-    try:
-        return [row[0] for row in result["data"]["values"]]
-    except:
-        return []
+    return extract_nodes(result)
 
 def mark_escalated(complaint_id: str):
     run_query("""
@@ -91,6 +108,9 @@ def check_repeat_complaint(ward: str, category: str) -> bool:
         RETURN count(c) as count
     """, {"ward": ward, "category": category})
     try:
-        return result["data"]["values"][0][0] > 0
+        values = result.get("data", {}).get("values", [])
+        if values:
+            return values[0][0] > 0
     except:
-        return False
+        pass
+    return False
