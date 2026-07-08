@@ -5,13 +5,12 @@ from models import ComplaintInput
 from agents import (agent_understand, agent_route, agent_prioritize,
                     agent_draft_communication, agent_escalate)
 from database import (save_complaint, get_complaint, get_all_complaints,
-                      check_repeat_complaint)
+                      check_repeat_complaint, run_query)
 from scheduler import start_scheduler
 import uuid
 
 app = FastAPI(title="CivicPulse Backend", version="1.0")
 
-# This allows Krisha's React frontend (on a different port) to call your API
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -26,37 +25,30 @@ def startup_event():
 
 @app.get("/")
 def root():
-    return {"message": "GrievanceAI backend is running"}
+    return {"message": "CivicPulse backend is running"}
 
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
 
+@app.get("/debug")
+def debug():
+    result = run_query("MATCH (c:Complaint) RETURN c LIMIT 1")
+    return result
 
-# ── THE MAIN ENDPOINT — all 5 agents run here ──────────────────
 @app.post("/complaint/submit")
 def submit_complaint(complaint: ComplaintInput):
     try:
         ward = complaint.ward or "Unknown"
-
-        # Agent 1: Understand
         understanding = agent_understand(complaint.description, ward)
-
-        # Agent 2: Route
         routing = agent_route(understanding["category"])
-
-        # Check repeat
         is_repeat = check_repeat_complaint(ward, understanding["category"])
-
-        # Agent 3: Prioritise
         priority_info = agent_prioritize(
             category=understanding["category"],
             urgency=understanding["urgency"],
             affected_people=understanding["affected_people_estimate"],
             repeat_complaint=is_repeat
         )
-
-        # Agent 4: Draft communication
         temp_id = str(uuid.uuid4())[:8].upper()
         officer_message = agent_draft_communication(
             complaint_id=temp_id,
@@ -66,8 +58,6 @@ def submit_complaint(complaint: ComplaintInput):
             priority_label=priority_info["priority_label"],
             location=understanding["location_hint"]
         )
-
-        # Save to Neo4j
         data_to_save = {
             "description": complaint.description,
             "category": understanding["category"],
@@ -81,7 +71,6 @@ def submit_complaint(complaint: ComplaintInput):
             "location_hint": understanding["location_hint"]
         }
         complaint_id = save_complaint(data_to_save)
-
         return {
             "complaint_id": complaint_id,
             "category": understanding["category"],
@@ -96,10 +85,8 @@ def submit_complaint(complaint: ComplaintInput):
             "status": "Filed",
             "message": "Your complaint has been filed and routed to the correct department."
         }
-
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Something went wrong: {str(e)}")
-
 
 @app.get("/complaint/{complaint_id}")
 def get_single_complaint(complaint_id: str):
@@ -107,7 +94,6 @@ def get_single_complaint(complaint_id: str):
     if not complaint:
         raise HTTPException(status_code=404, detail="Complaint not found")
     return complaint
-
 
 @app.get("/complaints/all")
 def get_all():
